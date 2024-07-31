@@ -13,10 +13,26 @@ locals {
 
 resource "random_uuid" "mesh" {}
 
+resource "scaleway_vpc" "vpc" {
+  for_each       = local.regions
+  region         = each.key
+  name           = "demo"
+  enable_routing = true
+}
+
 resource "scaleway_vpc_private_network" "pn" {
   for_each = local.regions
   region   = each.key
   name     = "demo"
+  vpc_id   = scaleway_vpc.vpc[each.key].id
+}
+
+resource "scaleway_ipam_ip" "vip" {
+  for_each = local.regions
+  region   = each.key
+  source {
+    private_network_id = scaleway_vpc_private_network.pn[each.key].id
+  }
 }
 
 resource "scaleway_instance_ip" "ip" {
@@ -77,5 +93,9 @@ resource "scaleway_instance_server" "srv" {
 }
 
 output "servers" {
-  value = [for instance in scaleway_instance_server.srv: {"${instance.name}": "${instance.public_ip}"}]
+  value = [for instance in scaleway_instance_server.srv : "${instance.name}: ssh root@${instance.public_ip}"]
+}
+
+output "vips" {
+  value = [for vip in scaleway_ipam_ip.vip : "${vip.region}: ${split("/", vip.address)[0]}"]
 }
